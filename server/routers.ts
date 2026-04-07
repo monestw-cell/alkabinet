@@ -7,7 +7,7 @@ import * as bcrypt from "bcryptjs";
 import { sdk } from "./_core/sdk";
 import { getDb } from "./db";
 import { users } from "../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { eq, desc, asc } from "drizzle-orm";
 import { 
   getUserByOpenId, 
   getUserById, 
@@ -42,6 +42,7 @@ import {
   markNotificationAsRead,
   markConfessionAsRead,
 } from "./db";
+import { confessionMessages } from "../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "./_core/llm";
 import { storagePut } from './storage';
@@ -252,24 +253,73 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return await getUserById(input.userId);
       }),
+
+    // Update user profile
+    updateProfile: protectedProcedure
+      .input(z.object({
+        fullName: z.string(),
+        dateOfBirth: z.date(),
+        profileImage: z.string(),
+        specialization: z.string(),
+        hobbies: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "يجب تسجيل الدخول أولاً",
+          });
+        }
+
+        let profileImageUrl = input.profileImage;
+
+        // If it's a base64 data URL, convert and upload to S3
+        if (input.profileImage.startsWith('data:')) {
+          try {
+            const base64Data = input.profileImage.split(',')[1];
+            const buffer = Buffer.from(base64Data, 'base64');
+            const result = await storagePut(
+              `profiles/${ctx.user.id}-profile-${Date.now()}.jpg`,
+              buffer,
+              'image/jpeg'
+            );
+            profileImageUrl = result.url;
+          } catch (error) {
+            console.error('[Storage] Failed to upload profile image:', error);
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'فشل رفع الصورة الشخصية',
+            });
+          }
+        }
+
+        await updateUserProfile(ctx.user.id, {
+          fullName: input.fullName,
+          dateOfBirth: input.dateOfBirth,
+          profileImage: profileImageUrl,
+          specialization: input.specialization,
+          hobbies: input.hobbies,
+        });
+
+        return { success: true };
+      }),
   }),
 
     // Confession Chat (الحنيوك - شات الاعتراف السري)
   confessions: router({
     send: protectedProcedure
       .input(z.object({
-        recipientId: z.number(),
         message: z.string(),
       }))
       .mutation(async ({ input, ctx }) => {
         // Rewrite message in Modern Standard Arabic using AI
-        let arabicMessage = input.message;
+        let reformattedMessage = input.message;
         try {
           const response = await invokeLLM({
             messages: [
               {
                 role: "system",
-                content: "أنت مساعد متخصص في إعادة صياغة النصوص باللغة العربية الفصحى. أعد صياغة الرسالة التالية بالفصحى مع الحفاظ على المعنى الأصلي. رد فقط بالرسالة المعاد صياغتها بدون تعليقات إضافية.",
+                content: "أنت مساعد متخصص في إعادة صياغة النصوص باللغة العربية الفصحى لإخفاء الهوية الكتابية. أعد صياغة الرسالة التالية بالفصحى مع تغيير الأسلوب تماماً لإخفاء هوية الكاتب. رد فقط بالرسالة المعاد صياغتها بدون تعليقات إضافية.",
               },
               {
                 role: "user",
@@ -277,32 +327,46 @@ export const appRouter = router({
               },
             ],
           });
-          arabicMessage = (typeof response.choices[0]?.message.content === 'string' ? response.choices[0]?.message.content : input.message) || input.message;
+          reformattedMessage = (typeof response.choices[0]?.message.content === 'string' ? response.choices[0]?.message.content : input.message) || input.message;
         } catch (e) {
           console.error("[LLM] Failed to rewrite message:", e);
         }
 
         const result = await createConfessionMessage({
           senderId: ctx.user!.id,
-          recipientId: input.recipientId,
+          recipientId: 0, // Group chat - no specific recipient
           originalMessage: input.message,
-          arabicMessage: arabicMessage,
+          arabicMessage: reformattedMessage,
         });
 
-        // Create notification
+        // Create notification for all members
         try {
-          await createNotification({
-            userId: input.recipientId,
-            type: "confession",
-            title: "رسالة اعتراف جديدة",
-            message: "تلقيت رسالة اعتراف سرية جديدة",
-          });
+          const allUsers = await getAllUsers();
+          for (const user of allUsers) {
+            if (user.id !== ctx.user!.id && user.isProfileComplete) {
+              await createNotification({
+                userId: user.id,
+                type: "confession",
+                title: "رسالة اعتراف جديدة",
+                message: "تلقيت رسالة اعتراف سرية جديدة في الشات الجماعي",
+              });
+            }
+          }
         } catch (e) {
-          console.error("[Notification] Failed to create notification:", e);
+          console.error("[Notification] Failed to create notifications:", e);
         }
 
         return result;
       }),
+
+    getMessages: protectedProcedure.query(async () => {
+      // Get all confession messages for the group chat
+      const db = await getDb();
+      if (!db) return [];
+      
+      const messages = await db.select().from(confessionMessages).orderBy(confessionMessages.createdAt);
+      return messages;
+    }),
 
     getForUser: protectedProcedure.query(async ({ ctx }) => {
       return await getConfessionMessagesForUser(ctx.user!.id);

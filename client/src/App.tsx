@@ -18,6 +18,7 @@ import PESResults from "./pages/PESResults";
 import Ratings from "./pages/Ratings";
 import Tips from "./pages/Tips";
 import Gallery from "./pages/Gallery";
+import EditProfile from "./pages/EditProfile";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -37,6 +38,7 @@ function Router() {
       <Route path={"/ratings"} component={Ratings} />
       <Route path={"/tips"} component={Tips} />
       <Route path={"/gallery"} component={Gallery} />
+      <Route path={"/edit-profile"} component={EditProfile} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

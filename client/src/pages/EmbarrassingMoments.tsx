@@ -119,13 +119,24 @@ export default function EmbarrassingMoments() {
                       key={moment.id}
                       className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors"
                     >
-                      <div className="flex items-start justify-between mb-2">
-                        <p className="text-sm font-semibold text-yellow-400">
-                          {moment.userName}
-                        </p>
-                        <span className="text-xs text-slate-500">
-                          {new Date(moment.createdAt).toLocaleDateString("ar-SA")}
-                        </span>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          {moment.userProfileImage && (
+                            <img
+                              src={moment.userProfileImage}
+                              alt={moment.userName}
+                              className="w-10 h-10 rounded-full object-cover border border-slate-600"
+                            />
+                          )}
+                          <div>
+                            <p className="text-sm font-semibold text-yellow-400">
+                              {moment.userName}
+                            </p>
+                            <span className="text-xs text-slate-500">
+                              {new Date(moment.createdAt).toLocaleDateString("ar-SA")}
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
                       <p className="text-slate-100 leading-relaxed">
