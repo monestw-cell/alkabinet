@@ -44,6 +44,8 @@ import {
 } from "./db";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "./_core/llm";
+import { storagePut } from './storage';
+import { Buffer } from 'buffer';
 
 // List of 6 members (fixed)
 const MEMBERS = [
@@ -193,7 +195,7 @@ export const appRouter = router({
       .input(z.object({
         fullName: z.string(),
         dateOfBirth: z.date(),
-        profileImage: z.string().url(),
+        profileImage: z.string(), // Can be base64 or URL
         specialization: z.string(),
         hobbies: z.string(),
       }))
@@ -205,8 +207,34 @@ export const appRouter = router({
           });
         }
 
+        let profileImageUrl = input.profileImage;
+
+        // If it's a base64 data URL, convert and upload to S3
+        if (input.profileImage.startsWith('data:')) {
+          try {
+            const base64Data = input.profileImage.split(',')[1];
+            const buffer = Buffer.from(base64Data, 'base64');
+            const result = await storagePut(
+              `profiles/${ctx.user.id}-profile-${Date.now()}.jpg`,
+              buffer,
+              'image/jpeg'
+            );
+            profileImageUrl = result.url;
+          } catch (error) {
+            console.error('[Storage] Failed to upload profile image:', error);
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'فشل رفع الصورة الشخصية',
+            });
+          }
+        }
+
         await updateUserProfile(ctx.user.id, {
-          ...input,
+          fullName: input.fullName,
+          dateOfBirth: input.dateOfBirth,
+          profileImage: profileImageUrl,
+          specialization: input.specialization,
+          hobbies: input.hobbies,
           isProfileComplete: true,
         });
 
