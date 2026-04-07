@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,7 +32,7 @@ export default function Tips() {
 
     setIsLoading(true);
     try {
-      await createMutation.mutateAsync({ content });
+      await createMutation.mutateAsync({ tip: content });
 
       toast.success("تم إرسال النصيحة بنجاح");
       setContent("");

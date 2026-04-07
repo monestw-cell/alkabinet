@@ -16,9 +16,9 @@ export default function Invitations() {
   const [isLoading, setIsLoading] = useState(false);
 
   const usersQuery = trpc.auth.getAllUsers.useQuery();
-  const invitationsQuery = trpc.invitations.getInvitations.useQuery();
+  const invitationsQuery = trpc.invitations.getForUser.useQuery();
   const createMutation = trpc.invitations.create.useMutation();
-  const respondMutation = trpc.invitations.respond.useMutation();
+  const respondMutation = trpc.invitations.updateStatus.useMutation();
 
   useEffect(() => {
     if (usersQuery.data) {
@@ -37,8 +37,8 @@ export default function Invitations() {
     setIsLoading(true);
     try {
       await createMutation.mutateAsync({
-        inviteeId: parseInt(inviteeId),
-        invitationType,
+        invitedUserId: parseInt(inviteeId),
+        occasion: invitationType,
       });
 
       toast.success("تم إرسال العزومة بنجاح");

@@ -1,9 +1,13 @@
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as bcrypt from "bcryptjs";
+import { sdk } from "./_core/sdk";
+import { getDb } from "./db";
+import { users } from "../drizzle/schema";
+import { eq } from "drizzle-orm";
 import { 
   getUserByOpenId, 
   getUserById, 
@@ -51,6 +55,36 @@ const MEMBERS = [
   "محمد المجايدة",
 ];
 
+// Initialize members in database on startup
+(async () => {
+  try {
+    const allUsers = await getAllUsers();
+    const existingNames = new Set(allUsers.map(u => u.fullName).filter(Boolean));
+    
+    for (const memberName of MEMBERS) {
+      if (!existingNames.has(memberName)) {
+        const db = await getDb();
+        if (db) {
+          try {
+            await db.insert(users).values({
+              openId: `member-${memberName.replace(/\s+/g, '-').toLowerCase()}`,
+              fullName: memberName,
+              isProfileComplete: false,
+              passwordHash: null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          } catch (e) {
+            // User already exists, skip
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error("[Init] Failed to initialize members:", error);
+  }
+})();
+
 export const appRouter = router({
   system: systemRouter,
   
@@ -71,9 +105,9 @@ export const appRouter = router({
         username: z.string(),
         password: z.string(),
       }))
-      .mutation(async ({ input }) => {
-        const users = await getAllUsers();
-        const user = users.find(u => u.fullName === input.username);
+      .mutation(async ({ input, ctx }) => {
+        const allUsers = await getAllUsers();
+        const user = allUsers.find(u => u.fullName === input.username);
         
         if (!user) {
           throw new TRPCError({
@@ -97,6 +131,15 @@ export const appRouter = router({
           });
         }
 
+        // Create session token
+        const sessionToken = await sdk.createSessionToken(user.openId || `custom-${user.id}`, {
+          name: user.fullName || "",
+          expiresInMs: ONE_YEAR_MS,
+        });
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
         return {
           success: true,
           user,
@@ -109,9 +152,9 @@ export const appRouter = router({
         username: z.string(),
         password: z.string(),
       }))
-      .mutation(async ({ input }) => {
-        const users = await getAllUsers();
-        const user = users.find(u => u.fullName === input.username);
+      .mutation(async ({ input, ctx }) => {
+        const allUsers = await getAllUsers();
+        const user = allUsers.find(u => u.fullName === input.username);
         
         if (!user) {
           throw new TRPCError({
@@ -130,6 +173,15 @@ export const appRouter = router({
         const hashedPassword = await bcrypt.hash(input.password, 10);
         await updateUserPassword(user.id, hashedPassword);
 
+        // Create session token after setting password
+        const sessionToken = await sdk.createSessionToken(user.openId || `custom-${user.id}`, {
+          name: user.fullName || "",
+          expiresInMs: ONE_YEAR_MS,
+        });
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+
         return { success: true };
       }),
 
@@ -146,7 +198,14 @@ export const appRouter = router({
         hobbies: z.string(),
       }))
       .mutation(async ({ input, ctx }) => {
-        await updateUserProfile(ctx.user!.id, {
+        if (!ctx.user) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "يجب تسجيل الدخول أولاً",
+          });
+        }
+
+        await updateUserProfile(ctx.user.id, {
           ...input,
           isProfileComplete: true,
         });
@@ -167,7 +226,7 @@ export const appRouter = router({
       }),
   }),
 
-  // Confession Chat (الحنيوك - شات الاعتراف السري)
+    // Confession Chat (الحنيوك - شات الاعتراف السري)
   confessions: router({
     send: protectedProcedure
       .input(z.object({
@@ -176,40 +235,48 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         // Rewrite message in Modern Standard Arabic using AI
-        const response = await invokeLLM({
-          messages: [
-            {
-              role: "system",
-              content: "أنت مساعد متخصص في إعادة صياغة النصوص باللغة العربية الفصحى. أعد صياغة الرسالة التالية بالفصحى مع الحفاظ على المعنى الأصلي. رد فقط بالرسالة المعاد صياغتها بدون تعليقات إضافية.",
-            },
-            {
-              role: "user",
-              content: input.message,
-            },
-          ],
-        });
-
-        const arabicMessage = response.choices[0]?.message.content || input.message;
+        let arabicMessage = input.message;
+        try {
+          const response = await invokeLLM({
+            messages: [
+              {
+                role: "system",
+                content: "أنت مساعد متخصص في إعادة صياغة النصوص باللغة العربية الفصحى. أعد صياغة الرسالة التالية بالفصحى مع الحفاظ على المعنى الأصلي. رد فقط بالرسالة المعاد صياغتها بدون تعليقات إضافية.",
+              },
+              {
+                role: "user",
+                content: input.message,
+              },
+            ],
+          });
+          arabicMessage = (typeof response.choices[0]?.message.content === 'string' ? response.choices[0]?.message.content : input.message) || input.message;
+        } catch (e) {
+          console.error("[LLM] Failed to rewrite message:", e);
+        }
 
         const result = await createConfessionMessage({
           senderId: ctx.user!.id,
           recipientId: input.recipientId,
           originalMessage: input.message,
-          arabicMessage: arabicMessage as string,
+          arabicMessage: arabicMessage,
         });
 
         // Create notification
-        await createNotification({
-          userId: input.recipientId,
-          type: "confession",
-          title: "رسالة اعتراف جديدة من الحنيوك",
-          message: arabicMessage as string,
-        });
+        try {
+          await createNotification({
+            userId: input.recipientId,
+            type: "confession",
+            title: "رسالة اعتراف جديدة",
+            message: "تلقيت رسالة اعتراف سرية جديدة",
+          });
+        } catch (e) {
+          console.error("[Notification] Failed to create notification:", e);
+        }
 
-        return { success: true };
+        return result;
       }),
 
-    getMessages: protectedProcedure.query(async ({ ctx }) => {
+    getForUser: protectedProcedure.query(async ({ ctx }) => {
       return await getConfessionMessagesForUser(ctx.user!.id);
     }),
 
@@ -221,38 +288,40 @@ export const appRouter = router({
       }),
   }),
 
-  // Invitations (حابب تعزم حد؟)
+    // Invitations (العزومات - حابب تعزم حد؟)
   invitations: router({
     create: protectedProcedure
       .input(z.object({
-        inviteeId: z.number(),
-        invitationType: z.string(),
+        invitedUserId: z.number(),
+        occasion: z.string(),
       }))
       .mutation(async ({ input, ctx }) => {
         const result = await createInvitation({
           inviterId: ctx.user!.id,
-          inviteeId: input.inviteeId,
-          invitationType: input.invitationType,
+          inviteeId: input.invitedUserId,
+          invitationType: input.occasion,
         });
 
         // Create notification
-        const inviter = await getUserById(ctx.user!.id);
-        await createNotification({
-          userId: input.inviteeId,
-          type: "invitation",
-          title: `${inviter?.fullName} يريد أن يعزمك`,
-          message: `نوع العزومة: ${input.invitationType}`,
-          relatedUserId: ctx.user!.id,
-        });
+        try {
+          await createNotification({
+            userId: input.invitedUserId,
+            type: "invitation",
+            title: "عزومة جديدة",
+            message: `تلقيت عزومة: ${input.occasion}`,
+          });
+        } catch (e) {
+          console.error("[Notification] Failed to create notification:", e);
+        }
 
-        return { success: true };
+        return result;
       }),
 
-    getInvitations: protectedProcedure.query(async ({ ctx }) => {
+    getForUser: protectedProcedure.query(async ({ ctx }) => {
       return await getInvitationsForUser(ctx.user!.id);
     }),
 
-    respond: protectedProcedure
+    updateStatus: protectedProcedure
       .input(z.object({
         invitationId: z.number(),
         status: z.enum(["accepted", "declined"]),
@@ -263,7 +332,7 @@ export const appRouter = router({
       }),
   }),
 
-  // Weekly Photo Contest (أفضل صورة الأسبوع)
+    // Weekly Photos (أفضل صورة الأسبوع)
   photos: router({
     uploadWeekly: protectedProcedure
       .input(z.object({
@@ -279,25 +348,14 @@ export const appRouter = router({
           year: input.year,
         });
 
-        // Notify all users
-        const users = await getAllUsers();
-        for (const user of users) {
-          if (user.id !== ctx.user!.id) {
-            await createNotification({
-              userId: user.id,
-              type: "photo_upload",
-              title: "صورة جديدة لأفضل صورة الأسبوع",
-              message: `${ctx.user!.fullName} رفع صورة جديدة`,
-              relatedUserId: ctx.user!.id,
-            });
-          }
-        }
-
-        return { success: true };
+        return result;
       }),
 
-    getWeekly: protectedProcedure
-      .input(z.object({ week: z.number(), year: z.number() }))
+    getWeekly: publicProcedure
+      .input(z.object({
+        week: z.number(),
+        year: z.number(),
+      }))
       .query(async ({ input }) => {
         return await getWeeklyPhotos(input.week, input.year);
       }),
@@ -305,41 +363,32 @@ export const appRouter = router({
     vote: protectedProcedure
       .input(z.object({ photoId: z.number() }))
       .mutation(async ({ input, ctx }) => {
-        await voteForPhoto(ctx.user!.id, input.photoId);
+        await voteForPhoto(input.photoId, ctx.user!.id);
         return { success: true };
       }),
   }),
 
-  // Debt Record (سجل الديون)
+    // Debts (سجل الديون)
   debts: router({
     create: protectedProcedure
       .input(z.object({
+        creditorId: z.number(),
         debtorId: z.number(),
         amount: z.number(),
-        reason: z.string().optional(),
+        reason: z.string(),
       }))
-      .mutation(async ({ input, ctx }) => {
+      .mutation(async ({ input }) => {
         const result = await createDebt({
-          creditorId: ctx.user!.id,
+          creditorId: input.creditorId,
           debtorId: input.debtorId,
           amount: input.amount,
           reason: input.reason,
         });
 
-        // Create notification
-        const debtor = await getUserById(input.debtorId);
-        await createNotification({
-          userId: input.debtorId,
-          type: "debt",
-          title: "ديون جديدة",
-          message: `${ctx.user!.fullName} سجل عليك دين بقيمة ${input.amount}`,
-          relatedUserId: ctx.user!.id,
-        });
-
-        return { success: true };
+        return result;
       }),
 
-    getAll: protectedProcedure.query(async () => {
+    getAll: publicProcedure.query(async () => {
       return await getDebts();
     }),
 
@@ -351,79 +400,50 @@ export const appRouter = router({
       }),
   }),
 
-  // Embarrassing Moments (أرشيف المواقف المحرجة)
-  embarrassingMoments: router({
+    // Embarrassing Moments (المواقف المحرجة)
+  moments: router({
     create: protectedProcedure
-      .input(z.object({
-        title: z.string(),
-        description: z.string(),
-      }))
+      .input(z.object({ description: z.string() }))
       .mutation(async ({ input, ctx }) => {
         const result = await createEmbarrassingMoment({
           userId: ctx.user!.id,
-          title: input.title,
+          title: "موقف محرج",
           description: input.description,
         });
 
-        // Notify all users
-        const users = await getAllUsers();
-        for (const user of users) {
-          if (user.id !== ctx.user!.id) {
-            await createNotification({
-              userId: user.id,
-              type: "embarrassing_moment",
-              title: "موقف محرج جديد",
-              message: `${ctx.user!.fullName} أضاف موقفاً محرجاً: ${input.title}`,
-              relatedUserId: ctx.user!.id,
-            });
-          }
-        }
-
-        return { success: true };
+        return result;
       }),
 
-    getAll: protectedProcedure.query(async () => {
+    getAll: publicProcedure.query(async () => {
       return await getEmbarrassingMoments();
     }),
   }),
 
-  // PES Game Results (سجل الفوز بالبيس)
-  pesResults: router({
-    create: protectedProcedure
+  // PES Results (سجل البيس)
+  pes: router({
+    recordResult: protectedProcedure
       .input(z.object({
-        winnerId: z.number().optional(),
-        loserId: z.number().optional(),
-        didNotPlayIds: z.array(z.number()).optional(),
-        date: z.date(),
+        winnerId: z.number(),
+        loserId: z.number(),
+        notPlayedId: z.number().optional(),
       }))
-      .mutation(async ({ input, ctx }) => {
+      .mutation(async ({ input }) => {
         const result = await createPesResult({
           winnerId: input.winnerId,
           loserId: input.loserId,
-          didNotPlayIds: input.didNotPlayIds ? JSON.stringify(input.didNotPlayIds) : undefined,
-          date: input.date,
+          didNotPlayIds: input.notPlayedId ? JSON.stringify([input.notPlayedId]) : undefined,
+          date: new Date(),
         });
 
-        // Notify all users
-        const users = await getAllUsers();
-        for (const user of users) {
-          await createNotification({
-            userId: user.id,
-            type: "pes_result",
-            title: "نتيجة جديدة في لعبة البيس",
-            message: `تم تسجيل نتيجة جديدة في ${input.date.toLocaleDateString('ar-SA')}`,
-          });
-        }
-
-        return { success: true };
+        return result;
       }),
 
-    getAll: protectedProcedure.query(async () => {
+    getResults: publicProcedure.query(async () => {
       return await getPesResults();
     }),
   }),
 
-  // User Ratings (دفتر التقييم)
+    // Ratings (دفتر التقييم)
   ratings: router({
     create: protectedProcedure
       .input(z.object({
@@ -433,13 +453,13 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const result = await createRating({
-          raterId: ctx.user!.id,
           ratedUserId: input.ratedUserId,
+          raterId: ctx.user!.id,
           rating: input.rating,
           comment: input.comment,
         });
 
-        return { success: true };
+        return result;
       }),
 
     getForUser: protectedProcedure
@@ -449,61 +469,56 @@ export const appRouter = router({
       }),
   }),
 
-  // Anonymous Tips (صندوق النصائح المجهول)
+  // Anonymous Tips (صندوق النصائح)
   tips: router({
     create: publicProcedure
       .input(z.object({ tip: z.string() }))
       .mutation(async ({ input }) => {
         const result = await createAnonymousTip(input.tip);
-        return { success: true };
+
+        return result;
       }),
 
-    getAll: protectedProcedure.query(async () => {
+    getAll: publicProcedure.query(async () => {
       return await getAnonymousTips();
     }),
   }),
 
-  // Group Photo Archive (أرشيف الصور)
-  groupPhotos: router({
+  // Gallery (أرشيف الصور)
+  gallery: router({
     upload: protectedProcedure
-      .input(z.object({
-        photoUrl: z.string().url(),
-        description: z.string().optional(),
-      }))
+      .input(z.object({ imageUrl: z.string().url() }))
       .mutation(async ({ input, ctx }) => {
         const result = await createGroupPhoto({
           uploadedById: ctx.user!.id,
-          photoUrl: input.photoUrl,
-          description: input.description,
+          photoUrl: input.imageUrl,
         });
 
-        return { success: true };
+        return result;
       }),
 
-    getAll: protectedProcedure.query(async () => {
+    getAll: publicProcedure.query(async () => {
       return await getGroupPhotos();
     }),
   }),
 
   // Charity Archive (الصدقة الجارية)
   charity: router({
-    create: protectedProcedure
+    create: publicProcedure
       .input(z.object({
         type: z.enum(["dua", "quran_verse"]),
         content: z.string(),
-        arabicContent: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const result = await createCharityEntry({
           type: input.type,
           content: input.content,
-          arabicContent: input.arabicContent,
         });
 
-        return { success: true };
+        return result;
       }),
 
-    getAll: protectedProcedure.query(async () => {
+    getAll: publicProcedure.query(async () => {
       return await getCharityEntries();
     }),
   }),
