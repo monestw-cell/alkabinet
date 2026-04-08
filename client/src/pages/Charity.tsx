@@ -31,7 +31,6 @@ export default function Charity() {
       await createMutation.mutateAsync({
         type,
         content,
-        arabicContent: arabicContent || undefined,
       });
 
       toast.success("تم إضافة الصدقة الجارية بنجاح");

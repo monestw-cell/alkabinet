@@ -8,6 +8,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { DollarSign, Plus, Check, ArrowRight } from "lucide-react";
 import { useLocation } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 export default function Debts() {
   const [, setLocation] = useLocation();
@@ -17,6 +18,7 @@ export default function Debts() {
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  const { user } = useAuth();
   const usersQuery = trpc.auth.getAllUsers.useQuery();
   const debtsQuery = trpc.debts.getAll.useQuery();
   const createMutation = trpc.debts.create.useMutation();
@@ -39,9 +41,10 @@ export default function Debts() {
     setIsLoading(true);
     try {
       await createMutation.mutateAsync({
+        creditorId: user?.id || 0,
         debtorId: parseInt(debtorId),
         amount: parseFloat(amount),
-        reason: reason || undefined,
+        reason: reason || "",
       });
 
       toast.success("تم تسجيل الدين بنجاح");

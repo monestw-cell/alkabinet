@@ -173,7 +173,7 @@ export default function Ratings() {
                             <Star
                               key={i}
                               className={`w-4 h-4 ${
-                                i <= Math.round(parseFloat(avgRating))
+                                i <= Math.round(typeof avgRating === 'string' ? parseFloat(avgRating) : avgRating || 0)
                                   ? "fill-pink-400 text-pink-400"
                                   : "text-slate-600"
                               }`}
