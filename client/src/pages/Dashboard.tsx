@@ -17,6 +17,7 @@ import {
   Heart,
   Bell,
   LogOut,
+  X,
 } from "lucide-react";
 
 interface Feature {
@@ -32,6 +33,7 @@ export default function Dashboard() {
   const { user, loading, logout } = useAuth();
   const [, setLocation] = useLocation();
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const notificationsQuery = trpc.notifications.getForUser.useQuery();
   const logoutMutation = trpc.auth.logout.useMutation();
@@ -169,15 +171,59 @@ export default function Dashboard() {
             {/* Notifications */}
             <div className="relative">
               <Button
+                onClick={() => setShowNotifications(!showNotifications)}
                 variant="ghost"
                 size="icon"
                 className="relative text-slate-300 hover:text-white"
               >
                 <Bell className="w-5 h-5" />
                 {notifications.length > 0 && (
-                  <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+                  <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
                 )}
               </Button>
+
+              {/* Notifications Dropdown */}
+              {showNotifications && (
+                <div className="absolute top-full right-0 mt-2 w-96 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl z-50">
+                  <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+                    <h3 className="text-white font-semibold">الإشعارات ({notifications.length})</h3>
+                    <Button
+                      onClick={() => setShowNotifications(false)}
+                      variant="ghost"
+                      size="icon"
+                      className="text-slate-400 hover:text-white"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <p className="text-slate-400">لا توجد إشعارات حالياً</p>
+                      </div>
+                    ) : (
+                      notifications.map((notif, idx) => (
+                        <div
+                          key={idx}
+                          className="p-4 border-b border-slate-700 hover:bg-slate-700/50 transition-colors last:border-b-0"
+                        >
+                          <p className="text-sm text-slate-200 font-medium">{notif.title}</p>
+                          <p className="text-sm text-slate-400 mt-1">{notif.message}</p>
+                          <p className="text-xs text-slate-500 mt-2">
+                            {new Date(notif.createdAt).toLocaleDateString("ar-SA", {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Logout */}
