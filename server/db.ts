@@ -350,11 +350,11 @@ export async function getRatingsForUser(userId: number) {
 }
 
 // Anonymous Tips
-export async function createAnonymousTip(tip: string) {
+export async function createAnonymousTip(data: any) {
   const db = await getDb();
   if (!db) return null;
   
-  return await db.insert(anonymousTips).values({ tip });
+  return await db.insert(anonymousTips).values(data);
 }
 
 export async function getAnonymousTips() {

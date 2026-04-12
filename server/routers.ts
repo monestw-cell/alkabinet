@@ -42,7 +42,7 @@ import {
   markNotificationAsRead,
   markConfessionAsRead,
 } from "./db";
-import { confessionMessages } from "../drizzle/schema";
+import { confessionMessages, anonymousTips } from "../drizzle/schema";
 import { TRPCError } from "@trpc/server";
 import { invokeLLM } from "./_core/llm";
 import { storagePut } from './storage';
@@ -364,8 +364,11 @@ export const appRouter = router({
       const db = await getDb();
       if (!db) return [];
       
-      const messages = await db.select().from(confessionMessages).orderBy(confessionMessages.createdAt);
-      return messages;
+      const messages = await db.select().from(confessionMessages).orderBy(desc(confessionMessages.createdAt));
+      return messages.map(msg => ({
+        ...msg,
+        reformattedMessage: msg.arabicMessage || msg.originalMessage,
+      }));
     }),
 
     getForUser: protectedProcedure.query(async ({ ctx }) => {
@@ -563,13 +566,50 @@ export const appRouter = router({
 
   // Anonymous Tips (صندوق النصائح)
   tips: router({
-    create: publicProcedure
-      .input(z.object({ tip: z.string() }))
-      .mutation(async ({ input }) => {
-        const result = await createAnonymousTip(input.tip);
+    create: protectedProcedure
+      .input(z.object({ 
+        recipientId: z.number(),
+        content: z.string() 
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const db = await getDb();
+        if (!db) return null;
+        
+        const sender = await getUserById(ctx.user!.id);
+        
+        const result = await db.insert(anonymousTips).values({
+          senderId: ctx.user!.id,
+          senderName: sender?.name || 'مجهول',
+          senderProfileImage: sender?.profileImage || '',
+          recipientId: input.recipientId,
+          content: input.content,
+          createdAt: new Date(),
+        });
+
+        try {
+          await createNotification({
+            userId: input.recipientId,
+            type: 'tip',
+            title: 'نصيحة جديدة',
+            message: `تلقيت نصيحة جديدة من ${sender?.name || 'صديق'}`,
+          });
+        } catch (e) {
+          console.error('[Notification] Failed to create notification:', e);
+        }
 
         return result;
       }),
+
+    getForUser: protectedProcedure.query(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) return [];
+      
+      return await db
+        .select()
+        .from(anonymousTips)
+        .where(eq(anonymousTips.recipientId, ctx.user!.id))
+        .orderBy(desc(anonymousTips.createdAt));
+    }),
 
     getAll: publicProcedure.query(async () => {
       return await getAnonymousTips();

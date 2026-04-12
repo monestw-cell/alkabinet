@@ -160,7 +160,11 @@ export type InsertRating = typeof ratings.$inferInsert;
 // Anonymous Tips (صندوق النصائح المجهول)
 export const anonymousTips = mysqlTable("anonymousTips", {
   id: int("id").autoincrement().primaryKey(),
-  tip: longtext("tip").notNull(),
+  senderId: int("senderId").notNull(),
+  senderName: varchar("senderName", { length: 255 }).notNull(),
+  senderProfileImage: text("senderProfileImage"),
+  recipientId: int("recipientId").notNull(),
+  content: longtext("content").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
