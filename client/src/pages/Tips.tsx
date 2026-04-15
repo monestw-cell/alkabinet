@@ -103,10 +103,10 @@ export default function Tips() {
                     <SelectTrigger className="bg-slate-800 border-slate-600 text-slate-100">
                       <SelectValue placeholder="اختر الشخص المراد نصحه" />
                     </SelectTrigger>
-                    <SelectContent className="bg-slate-800 border-slate-600">
+                    <SelectContent className="bg-slate-800 border-slate-600 max-w-xs">
                       {users.map((u: any) => (
-                        <SelectItem key={u.id} value={u.id.toString()}>
-                          {u.name}
+                        <SelectItem key={u.id} value={u.id.toString()} className="text-slate-100">
+                          <span className="truncate">{u.fullName || u.name}</span>
                         </SelectItem>
                       ))}
                     </SelectContent>

@@ -39,7 +39,7 @@ export const users = mysqlTable("users", {
   isProfileComplete: boolean("isProfileComplete").default(false),
   
   // Password field (for custom login)
-  passwordHash: varchar("passwordHash", { length: 255 }),
+  passwordHash: text("passwordHash"),
   
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
