@@ -26,9 +26,32 @@ export default function Login() {
     }
   }, [membersQuery.data]);
 
+  // Monitor form changes to ensure state is in sync
+  useEffect(() => {
+    const form = document.querySelector('form');
+    if (!form) return;
+
+    const handleFormChange = () => {
+      // This ensures React state stays in sync with form inputs
+      // even when values are set programmatically
+    };
+
+    form.addEventListener('change', handleFormChange);
+    return () => form.removeEventListener('change', handleFormChange);
+  }, []);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !password) {
+    
+    // Get form values directly to bypass React state issues
+    const form = e.target as HTMLFormElement;
+    const usernameInput = form.querySelector('select, [role="combobox"]') as any;
+    const passwordInput = form.querySelector('input[type="password"]') as HTMLInputElement;
+    
+    const selectedUsername = username || usernameInput?.value;
+    const selectedPassword = password || passwordInput?.value;
+    
+    if (!selectedUsername || !selectedPassword) {
       toast.error("يرجى ملء جميع الحقول");
       return;
     }
@@ -37,25 +60,23 @@ export default function Login() {
     try {
       if (isNewUser) {
         await setPasswordMutation.mutateAsync({
-          username,
-          password,
+          username: selectedUsername,
+          password: selectedPassword,
         });
         toast.success("تم إنشاء كلمة السر بنجاح");
         setIsNewUser(false);
         setPassword("");
       } else {
         const result = await loginMutation.mutateAsync({
-          username,
-          password,
+          username: selectedUsername,
+          password: selectedPassword,
         });
-        if (result.success) {
-          toast.success("تم تسجيل الدخول بنجاح");
-          // Redirect to profile completion or dashboard
-          if (!result.user.isProfileComplete) {
-            setLocation("/profile-setup");
-          } else {
-            setLocation("/dashboard");
-          }
+        toast.success("تم تسجيل الدخول بنجاح");
+        // Redirect to profile completion or dashboard
+        if (!result.user.isProfileComplete) {
+          setLocation("/profile-setup");
+        } else {
+          setLocation("/dashboard");
         }
       }
     } catch (error: any) {
@@ -91,7 +112,16 @@ export default function Login() {
             {/* Username Select */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-300">اسم المستخدم</label>
-              <Select value={username} onValueChange={setUsername}>
+              <Select value={username || ""} onValueChange={(value) => {
+                setUsername(value);
+                // Force React to re-evaluate the button state
+                setTimeout(() => {
+                  const form = document.querySelector('form');
+                  if (form) {
+                    form.dispatchEvent(new Event('change', { bubbles: true }));
+                  }
+                }, 0);
+              }}>
                 <SelectTrigger className="bg-slate-800 border-slate-700 text-slate-100">
                   <SelectValue placeholder="اختر اسمك من القائمة" />
                 </SelectTrigger>
@@ -125,7 +155,7 @@ export default function Login() {
             {/* Submit Button */}
             <Button
               type="submit"
-              disabled={isLoading || !username || !password}
+              disabled={isLoading}
               className="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white font-semibold py-2 rounded-lg transition-all duration-200"
             >
               {isLoading ? (

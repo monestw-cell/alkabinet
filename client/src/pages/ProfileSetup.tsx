@@ -5,13 +5,14 @@ import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
-import { Upload, User, Calendar, BookOpen, Smile } from "lucide-react";
+import { Upload, Calendar, BookOpen, Smile } from "lucide-react";
 
 export default function ProfileSetup() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
-    fullName: "",
     dateOfBirth: "",
     specialization: "",
     hobbies: "",
@@ -47,7 +48,6 @@ export default function ProfileSetup() {
     e.preventDefault();
 
     if (
-      !formData.fullName ||
       !formData.dateOfBirth ||
       !formData.profileImage ||
       !formData.specialization ||
@@ -60,7 +60,7 @@ export default function ProfileSetup() {
     setIsLoading(true);
     try {
       await completeProfileMutation.mutateAsync({
-        fullName: formData.fullName,
+        fullName: user?.fullName || "",
         dateOfBirth: new Date(formData.dateOfBirth),
         profileImage: formData.profileImage,
         specialization: formData.specialization,
@@ -115,20 +115,14 @@ export default function ProfileSetup() {
                 </div>
               </div>
 
-              {/* Full Name */}
+              {/* Full Name Display */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                  <User className="w-4 h-4" />
                   الاسم الكامل
                 </label>
-                <Input
-                  type="text"
-                  name="fullName"
-                  value={formData.fullName}
-                  onChange={handleInputChange}
-                  placeholder="أدخل اسمك الكامل"
-                  className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500"
-                />
+                <div className="bg-slate-800 border border-slate-700 text-slate-100 px-4 py-2 rounded-md">
+                  {user?.fullName || "غير محدد"}
+                </div>
               </div>
 
               {/* Date of Birth */}

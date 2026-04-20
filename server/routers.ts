@@ -50,8 +50,8 @@ import { Buffer } from 'buffer';
 
 // List of 6 members (fixed)
 const MEMBERS = [
-  "مؤنس الطويل",
-  "عبد الرحمن سارية الطويل",
+  "مؤنس وائل الطويل",
+  "عبد الرحمن سارية",
   "محمد العمصي",
   "سالم أبو ستة",
   "محمود المجايدة",
@@ -61,11 +61,15 @@ const MEMBERS = [
 // Initialize members in database on startup
 (async () => {
   try {
+    console.log("[Init] Starting member initialization...");
     const allUsers = await getAllUsers();
+    console.log(`[Init] Found ${allUsers.length} existing users`);
     const existingNames = new Set(allUsers.map(u => u.fullName).filter(Boolean));
+    console.log(`[Init] Existing names: ${Array.from(existingNames).join(", ")}`);
     
     for (const memberName of MEMBERS) {
       if (!existingNames.has(memberName)) {
+        console.log(`[Init] Creating user: ${memberName}`);
         const db = await getDb();
         if (db) {
           try {
@@ -77,12 +81,18 @@ const MEMBERS = [
               createdAt: new Date(),
               updatedAt: new Date(),
             });
+            console.log(`[Init] ✓ Created user: ${memberName}`);
           } catch (e) {
-            // User already exists, skip
+            console.error(`[Init] Error creating user ${memberName}:`, e);
           }
+        } else {
+          console.warn(`[Init] Database not available for user: ${memberName}`);
         }
+      } else {
+        console.log(`[Init] User already exists: ${memberName}`);
       }
     }
+    console.log("[Init] Member initialization complete");
   } catch (error) {
     console.error("[Init] Failed to initialize members:", error);
   }
