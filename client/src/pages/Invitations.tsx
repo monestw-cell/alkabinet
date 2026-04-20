@@ -159,13 +159,29 @@ export default function Invitations() {
                       className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors"
                     >
                       <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <p className="text-sm font-semibold text-purple-400">
-                            {users.find((u) => u.id === invitation.inviterId)?.fullName || "شخص ما"}
-                          </p>
-                          <p className="text-slate-100 font-medium mt-1">
-                            {invitation.invitationType}
-                          </p>
+                        <div className="flex items-center gap-3 flex-1">
+                          {(() => {
+                            const inviter = users.find((u) => u.id === invitation.inviterId);
+                            return (
+                              <>
+                                {inviter?.profileImage && (
+                                  <img
+                                    src={inviter.profileImage}
+                                    alt={inviter.fullName}
+                                    className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                                  />
+                                )}
+                                <div>
+                                  <p className="text-sm font-semibold text-purple-400">
+                                    {inviter?.fullName || "شخص ما"}
+                                  </p>
+                                  <p className="text-slate-100 font-medium mt-1">
+                                    {invitation.invitationType}
+                                  </p>
+                                </div>
+                              </>
+                            );
+                          })()}
                         </div>
                         <span className="text-xs text-slate-500">
                           {new Date(invitation.createdAt).toLocaleDateString("ar-SA")}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -6,10 +6,12 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Image, Upload, Heart, ArrowRight } from "lucide-react";
 import { useLocation } from "wouter";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 export default function WeeklyPhotos() {
   const [, setLocation] = useLocation();
-  const [photoUrl, setPhotoUrl] = useState("");
+  const { user } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [photos, setPhotos] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -29,28 +31,49 @@ export default function WeeklyPhotos() {
     }
   }, [photosQuery.data]);
 
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    if (!photoUrl.trim()) {
-      toast.error("يرجى إدخال رابط الصورة");
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error("يرجى اختيار صورة صحيحة");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("حجم الصورة يجب أن يكون أقل من 5MB");
       return;
     }
 
     setIsLoading(true);
     try {
-      await uploadMutation.mutateAsync({
-        photoUrl,
-        week: currentWeek,
-        year: currentYear,
-      });
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result as string;
+          await uploadMutation.mutateAsync({
+            photoUrl: base64,
+            week: currentWeek,
+            year: currentYear,
+          });
 
-      toast.success("تم رفع الصورة بنجاح");
-      setPhotoUrl("");
-      photosQuery.refetch();
+          toast.success("تم رفع الصورة بنجاح");
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+          photosQuery.refetch();
+        } catch (error: any) {
+          toast.error(error.message || "حدث خطأ في رفع الصورة");
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      reader.readAsDataURL(file);
     } catch (error: any) {
-      toast.error(error.message || "حدث خطأ في رفع الصورة");
-    } finally {
+      toast.error(error.message || "حدث خطأ في معالجة الصورة");
       setIsLoading(false);
     }
   };
@@ -93,23 +116,26 @@ export default function WeeklyPhotos() {
             <div className="p-6">
               <h2 className="text-xl font-semibold text-slate-100 mb-4">رفع صورة</h2>
 
-              <form onSubmit={handleUpload} className="space-y-4">
-                {/* Photo URL Input */}
+              <form className="space-y-4">
+                {/* Photo File Input */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-300">رابط الصورة</label>
+                  <label className="text-sm font-medium text-slate-300">اختر صورة</label>
                   <Input
-                    type="url"
-                    value={photoUrl}
-                    onChange={(e) => setPhotoUrl(e.target.value)}
-                    placeholder="أدخل رابط الصورة"
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                    disabled={isLoading}
                     className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500"
                   />
+                  <p className="text-xs text-slate-500">الحد الأقصى: 5MB</p>
                 </div>
 
                 {/* Submit Button */}
                 <Button
-                  type="submit"
-                  disabled={isLoading || !photoUrl.trim()}
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isLoading}
                   className="w-full bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white"
                 >
                   {isLoading ? (
@@ -155,6 +181,19 @@ export default function WeeklyPhotos() {
 
                         {/* Photo Info */}
                         <div className="p-4">
+                          {/* Uploader Info */}
+                          {photo.uploadedByUser && (
+                            <div className="flex items-center gap-2 mb-3 pb-3 border-b border-slate-700">
+                              {photo.uploadedByUser.profileImage && (
+                                <img
+                                  src={photo.uploadedByUser.profileImage}
+                                  alt={photo.uploadedByUser.fullName}
+                                  className="w-8 h-8 rounded-full object-cover"
+                                />
+                              )}
+                              <span className="text-sm text-slate-300">{photo.uploadedByUser.fullName}</span>
+                            </div>
+                          )}
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2 text-orange-400">
                               <Heart className="w-5 h-5" />

@@ -441,14 +441,31 @@ export const appRouter = router({
   photos: router({
     uploadWeekly: protectedProcedure
       .input(z.object({
-        photoUrl: z.string().url(),
+        photoUrl: z.string(),
         week: z.number(),
         year: z.number(),
       }))
       .mutation(async ({ input, ctx }) => {
+        let photoUrl = input.photoUrl;
+        
+        // If it's a base64 string, upload to S3
+        if (input.photoUrl.startsWith('data:image')) {
+          try {
+            const base64Data = input.photoUrl.split(',')[1];
+            const buffer = Buffer.from(base64Data, 'base64');
+            const mimeType = input.photoUrl.split(';')[0].replace('data:', '');
+            const fileKey = `photos/${ctx.user!.id}-${Date.now()}.jpg`;
+            const result = await storagePut(fileKey, buffer, mimeType);
+            photoUrl = result.url;
+          } catch (e) {
+            console.error('Error uploading to S3:', e);
+            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'فشل رفع الصورة' });
+          }
+        }
+        
         const result = await createWeeklyPhoto({
           userId: ctx.user!.id,
-          photoUrl: input.photoUrl,
+          photoUrl,
           week: input.week,
           year: input.year,
         });
@@ -462,7 +479,24 @@ export const appRouter = router({
         year: z.number(),
       }))
       .query(async ({ input }) => {
-        return await getWeeklyPhotos(input.week, input.year);
+        const photos = await getWeeklyPhotos(input.week, input.year);
+        
+        // Enrich photos with uploader info
+        const enrichedPhotos = await Promise.all(
+          photos.map(async (photo: any) => {
+            const uploader = await getUserById(photo.userId);
+            return {
+              ...photo,
+              uploadedByUser: uploader ? {
+                id: uploader.id,
+                fullName: uploader.fullName || uploader.name,
+                profileImage: uploader.profileImage,
+              } : null,
+            };
+          })
+        );
+        
+        return enrichedPhotos;
       }),
 
     vote: protectedProcedure
@@ -589,7 +623,7 @@ export const appRouter = router({
         
         const result = await db.insert(anonymousTips).values({
           senderId: ctx.user!.id,
-          senderName: sender?.name || 'مجهول',
+          senderName: sender?.fullName || sender?.name || 'مجهول',
           senderProfileImage: sender?.profileImage || '',
           recipientId: input.recipientId,
           content: input.content,
@@ -601,7 +635,7 @@ export const appRouter = router({
             userId: input.recipientId,
             type: 'tip',
             title: 'نصيحة جديدة',
-            message: `تلقيت نصيحة جديدة من ${sender?.name || 'صديق'}`,
+            message: `تلقيت نصيحة جديدة من ${sender?.fullName || sender?.name || 'صديق'}`,
           });
         } catch (e) {
           console.error('[Notification] Failed to create notification:', e);
