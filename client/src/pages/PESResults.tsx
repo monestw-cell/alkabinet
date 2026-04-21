@@ -184,7 +184,7 @@ export default function PESResults() {
                     >
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs text-slate-500">
-                          {new Date(result.createdAt).toLocaleDateString("ar-SA")}
+                          {new Date(result.date).toLocaleDateString("ar-SA")}
                         </span>
                       </div>
 

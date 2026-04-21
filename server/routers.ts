@@ -30,6 +30,7 @@ import {
   createPesResult,
   getPesResults,
   createRating,
+  getAllRatings,
   getRatingsForUser,
   createAnonymousTip,
   getAnonymousTips,
@@ -606,6 +607,10 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return await getRatingsForUser(input.userId);
       }),
+
+    getAll: publicProcedure.query(async () => {
+      return await getAllRatings();
+    }),
   }),
 
   // Anonymous Tips (صندوق النصائح)

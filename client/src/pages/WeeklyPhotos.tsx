@@ -206,6 +206,16 @@ export default function WeeklyPhotos() {
                             )}
                           </div>
 
+                          {/* Voters List */}
+                          {photo.voters && photo.voters.length > 0 && (
+                            <div className="mb-3 p-2 bg-slate-700/30 rounded text-xs">
+                              <p className="text-slate-400 mb-1">المصوتون:</p>
+                              <p className="text-slate-300">
+                                {photo.voters.map((v: any) => v.fullName).join("، ")}
+                              </p>
+                            </div>
+                          )}
+
                           <Button
                             onClick={() => handleVote(photo.id)}
                             disabled={photo.isWinner}

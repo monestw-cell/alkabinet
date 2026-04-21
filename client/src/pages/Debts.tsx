@@ -69,8 +69,10 @@ export default function Debts() {
     }
   };
 
-  const unpaidDebts = debtsQuery.data?.filter((d: any) => !d.isPaid) || [];
-  const paidDebts = debtsQuery.data?.filter((d: any) => d.isPaid) || [];
+  // Filter debts to show only for creditor and debtor
+  const userDebts = debtsQuery.data?.filter((d: any) => d.creditorId === user?.id || d.debtorId === user?.id) || [];
+  const unpaidDebts = userDebts.filter((d: any) => !d.isPaid);
+  const paidDebts = userDebts.filter((d: any) => d.isPaid);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
@@ -174,15 +176,20 @@ export default function Debts() {
 
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {unpaidDebts.length > 0 ? (
-                    unpaidDebts.map((debt: any) => (
+                    unpaidDebts.map((debt: any) => {
+                      const isCreditor = debt.creditorId === user?.id;
+                      const debtor = users.find((u) => u.id === debt.debtorId);
+                      const creditor = users.find((u) => u.id === debt.creditorId);
+                      
+                      return (
                       <div
                         key={debt.id}
                         className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors"
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div>
-                            <p className="text-sm font-semibold text-slate-100">
-                              {users.find((u) => u.id === debt.debtorId)?.fullName || "شخص ما"}
+                            <p className="text-sm text-slate-400">
+                              {isCreditor ? `أنت دائن على` : `أنت مدين ل`} <span className="text-slate-100 font-semibold">{isCreditor ? debtor?.fullName : creditor?.fullName}</span>
                             </p>
                             <p className="text-lg font-bold text-green-400 mt-1">{debt.amount} ريال</p>
                           </div>
@@ -204,7 +211,8 @@ export default function Debts() {
                           تم السداد
                         </Button>
                       </div>
-                    ))
+                    );
+                    })
                   ) : (
                     <div className="text-center py-8">
                       <DollarSign className="w-12 h-12 text-slate-600 mx-auto mb-2 opacity-50" />

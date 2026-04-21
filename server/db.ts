@@ -232,11 +232,34 @@ export async function getWeeklyPhotos(week: number, year: number) {
   const db = await getDb();
   if (!db) return [];
   
-  return await db
+  const photos = await db
     .select()
     .from(weeklyPhotos)
     .where(and(eq(weeklyPhotos.week, week), eq(weeklyPhotos.year, year)))
     .orderBy(desc(weeklyPhotos.votes));
+
+  // Enrich with user data and voters
+  const enriched = await Promise.all(
+    photos.map(async (photo: any) => {
+      const uploader = await db.select().from(users).where(eq(users.id, photo.uploadedBy));
+      const votes = await db.select().from(photoVotes).where(eq(photoVotes.photoId, photo.id));
+      
+      const voters = await Promise.all(
+        votes.map(async (vote: any) => {
+          const voter = await db.select().from(users).where(eq(users.id, vote.voterId));
+          return voter[0];
+        })
+      );
+
+      return {
+        ...photo,
+        uploadedByUser: uploader[0] || null,
+        voters: voters.filter(Boolean),
+      };
+    })
+  );
+
+  return enriched;
 }
 
 export async function voteForPhoto(voterId: number, photoId: number) {
@@ -303,7 +326,21 @@ export async function getEmbarrassingMoments() {
   const db = await getDb();
   if (!db) return [];
   
-  return await db.select().from(embarrassingMoments).orderBy(desc(embarrassingMoments.createdAt));
+  const moments = await db.select().from(embarrassingMoments).orderBy(desc(embarrassingMoments.createdAt));
+  
+  // Enrich with user data
+  const enriched = await Promise.all(
+    moments.map(async (moment: any) => {
+      const user = await db.select().from(users).where(eq(users.id, moment.userId));
+      return {
+        ...moment,
+        userName: user[0]?.fullName || 'مستخدم',
+        userProfileImage: user[0]?.profileImage || null,
+      };
+    })
+  );
+  
+  return enriched;
 }
 
 // PES Results
@@ -337,6 +374,13 @@ export async function createRating(data: {
   if (!db) return null;
   
   return await db.insert(ratings).values(data);
+}
+
+export async function getAllRatings() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return await db.select().from(ratings).orderBy(desc(ratings.createdAt));
 }
 
 export async function getRatingsForUser(userId: number) {
@@ -399,7 +443,21 @@ export async function getCharityEntries() {
   const db = await getDb();
   if (!db) return [];
   
-  return await db.select().from(charityArchive).orderBy(desc(charityArchive.createdAt));
+  const entries = await db.select().from(charityArchive).orderBy(desc(charityArchive.createdAt));
+  
+  // Enrich with user data
+  const enriched = await Promise.all(
+    entries.map(async (entry: any) => {
+      const user = await db.select().from(users).where(eq(users.id, entry.userId));
+      return {
+        ...entry,
+        userName: user[0]?.fullName || 'مستخدم',
+        userProfileImage: user[0]?.profileImage || null,
+      };
+    })
+  );
+  
+  return enriched;
 }
 
 // Notifications

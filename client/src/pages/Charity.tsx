@@ -151,16 +151,25 @@ export default function Charity() {
                       className="p-4 bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700 rounded-lg hover:border-slate-600 transition-colors"
                     >
                       <div className="flex items-start gap-3 mb-2">
+                        <div className="flex items-center gap-2 flex-1">
+                          {entry.userProfileImage && (
+                            <img
+                              src={entry.userProfileImage}
+                              alt={entry.userName}
+                              className="w-8 h-8 rounded-full object-cover border border-slate-600"
+                            />
+                          )}
+                          <div>
+                            <p className="text-xs font-semibold text-slate-300">
+                              {entry.userName}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {new Date(entry.createdAt).toLocaleDateString("ar-SA")}
+                            </p>
+                          </div>
+                        </div>
                         <div className="text-2xl">
                           {entry.type === "dua" ? "🤲" : "📖"}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-xs font-semibold text-slate-400 uppercase">
-                            {entry.type === "dua" ? "دعاء" : "آية قرآنية"}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {new Date(entry.createdAt).toLocaleDateString("ar-SA")}
-                          </p>
                         </div>
                       </div>
 

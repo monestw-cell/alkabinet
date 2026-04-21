@@ -17,6 +17,7 @@ export default function Ratings() {
   const [isLoading, setIsLoading] = useState(false);
 
   const usersQuery = trpc.auth.getAllUsers.useQuery();
+  const ratingsQuery = trpc.ratings.getAll.useQuery();
   const createMutation = trpc.ratings.create.useMutation();
 
   useEffect(() => {
@@ -25,7 +26,11 @@ export default function Ratings() {
     }
   }, [usersQuery.data]);
 
-
+  useEffect(() => {
+    if (ratingsQuery.data) {
+      setRatings(ratingsQuery.data);
+    }
+  }, [ratingsQuery.data]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +50,7 @@ export default function Ratings() {
       toast.success("تم التقييم بنجاح");
       setRatedUserId("");
       setRating("5");
-      
+      ratingsQuery.refetch();
     } catch (error: any) {
       toast.error(error.message || "حدث خطأ");
     } finally {
