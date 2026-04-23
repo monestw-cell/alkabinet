@@ -136,7 +136,7 @@ export default function PESResults() {
                       <SelectValue placeholder="اختر من لم يلعب" />
                     </SelectTrigger>
                     <SelectContent className="bg-slate-800 border-slate-700">
-                      <SelectItem value="" className="text-slate-100">
+                      <SelectItem value="none" className="text-slate-100">
                         لا أحد
                       </SelectItem>
                       {users.map((user) => (
