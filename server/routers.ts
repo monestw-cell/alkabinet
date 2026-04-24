@@ -685,19 +685,20 @@ export const appRouter = router({
 
   // Charity Archive (الصدقة الجارية)
   charity: router({
-    create: publicProcedure
+    create: protectedProcedure
       .input(z.object({
         type: z.enum(["dua", "quran_verse"]),
         content: z.string(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const result = await createCharityEntry({
+          userId: ctx.user!.id,
           type: input.type,
           content: input.content,
         });
-
         return result;
       }),
+    // ...
 
     getAll: publicProcedure.query(async () => {
       return await getCharityEntries();
