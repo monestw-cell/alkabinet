@@ -429,14 +429,20 @@ export async function getGroupPhotos() {
 
 // Charity Archive
 export async function createCharityEntry(data: {
+  userId: number;
   type: "dua" | "quran_verse";
   content: string;
   arabicContent?: string;
 }) {
   const db = await getDb();
   if (!db) return null;
-  
-  return await db.insert(charityArchive).values(data);
+  return await db.insert(charityArchive).values({
+    userId: data.userId,
+    type: data.type,
+    content: data.content,
+    arabicContent: data.arabicContent || null,
+    createdAt: new Date(),
+  });
 }
 
 export async function getCharityEntries() {
